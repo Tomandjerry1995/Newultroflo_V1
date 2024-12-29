@@ -5,9 +5,15 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
         super().__init__()
         # 设置组件的图标
         self.setPixmap(QtGui.QPixmap(icon_path).scaled(40, 40, QtCore.Qt.AspectRatioMode.KeepAspectRatio, QtCore.Qt.TransformationMode.SmoothTransformation))
-        self.setFlags(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable | QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlags(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable |
+                      QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable |
+                      QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
         # 基础属性
         self.component_type = component_type
+        self.connections = [] # 存储连接的线条
+        self.add_connection_points()
+
+        
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
@@ -33,6 +39,34 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
         if dialog.exec_() == QtWidgets.QDialog.DialogCode.Accepted:
             self.update_parameters_from_inputs()
 
+
+    def add_connection_points(self):
+        # 添加左连接点
+        self.left_point = QtWidgets.QGraphicsEllipseItem(-10, self.pixmap().height() / 2 - 5, 10, 10, self)
+        self.left_point.setBrush(QtGui.QBrush(QtCore.Qt.red))
+        self.left_point.setPen(QtGui.QPen(QtCore.Qt.red, 2))
+        self.left_point.setZValue(self.zValue() + 1)
+        self.left_point.setData(QtCore.Qt.UserRole, "left_point")  # 添加标识
+
+        # 添加右连接点
+        self.right_point = QtWidgets.QGraphicsEllipseItem(self.pixmap().width(), self.pixmap().height() / 2 - 5, 10, 10, self)
+        self.right_point.setBrush(QtGui.QBrush(QtCore.Qt.red))
+        self.right_point.setPen(QtGui.QPen(QtCore.Qt.red, 2))
+        self.right_point.setZValue(self.zValue() + 1)
+        self.right_point.setData(QtCore.Qt.UserRole, "right_point")  # 添加标识
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            # 位置变化，更新连接线位置
+            for connection in self.connections:
+                connection.update_position()
+        return super().itemChange(change, value)
+
+
+
+
+
+
     def get_parameters(self):
         """在具体组件中实现，返回参数字典"""
         return {}
@@ -40,6 +74,16 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
     def update_parameters_from_inputs(self):
         """更新参数，具体逻辑由子类实现"""
         pass
+
+
+
+
+
+
+
+
+
+
 
 class PipeComponent(BaseComponent):
     def __init__(self, icon_path):

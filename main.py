@@ -85,8 +85,12 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
         super().__init__(scene, parent)
         self.main_window = main_window
         self.setAcceptDrops(True) # 允许放置事件
-
         
+        self.temp_line = None
+        self.start_item = None
+        
+
+    # 放置组件        
     def dragEnterEvent(self, event):
         event.acceptProposedAction()
 
@@ -124,12 +128,99 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
         # 接受放置动作
         event.acceptProposedAction()
 
-        
-        
+
+    # 绘制连接线
+    def mousePressEvent(self, event):
+        item = self.itemAt(event.pos())
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and isinstance(item, QtWidgets.QGraphicsEllipseItem) and item.data(QtCore.Qt.UserRole) == "right_point":
+            self.start_item = item.parentItem()  # 记录起点组件
+            self.temp_line = QtWidgets.QGraphicsPathItem()
+            path = QtGui.QPainterPath()
+            path.moveTo(item.sceneBoundingRect().center())
+            self.temp_line.setPath(path)
+            self.scene().addItem(self.temp_line)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.temp_line:
+            current_pos = self.mapToScene(event.pos())
+            start_pos = self.start_item.right_point.sceneBoundingRect().center()
+            path = QtGui.QPainterPath()
+            path.moveTo(start_pos)
+            path.lineTo(current_pos)
+            self.temp_line.setPath(path)
+        super().mouseMoveEvent(event)
+
+    
+    def mouseReleaseEvent(self, event):
+        if self.temp_line:
+            # 获取鼠标释放位置下的所有图形项
+            items = self.items(event.pos())
+            end_item = None
+            for item in items:
+                if isinstance(item, QtWidgets.QGraphicsEllipseItem) and item.data(QtCore.Qt.UserRole) == "left_point":
+                    end_item = item.parentItem()  # 获取终点组件
+                    break
+            if end_item and end_item != self.start_item:
+                # 创建永久连接线
+                connection = ConnectionLine(self.start_item, end_item)
+                self.scene().addItem(connection)  # 添加到场景
+                # 记录连接关系
+                self.start_item.connections.append(connection)
+                end_item.connections.append(connection)
+            # 移除临时线
+            self.scene().removeItem(self.temp_line)
+            self.temp_line = None
+            self.start_item = None
+        super().mouseReleaseEvent(event)
 
 
 
+
+                
+                
+                
+                
+                
+                
+class ConnectionLine(QtWidgets.QGraphicsPathItem):
+    def __init__(self, start_item, end_item):
+        super().__init__()
+        self.start_item = start_item
+        self.end_item = end_item
+        self.setPen(QtGui.QPen(QtCore.Qt.black, 2))  # 设置线条样式
+        self.update_position()
+
+    def update_position(self):
+        # 获取起点和终点的中心坐标
+        start_pos = self.start_item.right_point.sceneBoundingRect().center()
+        end_pos = self.end_item.left_point.sceneBoundingRect().center()
+        # 创建路径
+        path = QtGui.QPainterPath()
+        path.moveTo(start_pos)
         
+        # 添加控制点以创建平滑曲线
+        control_point_1 = QtCore.QPointF(
+            start_pos.x() + (end_pos.x() - start_pos.x()) / 2, start_pos.y()
+        )
+        control_point_2 = QtCore.QPointF(
+            start_pos.x() + (end_pos.x() - start_pos.x()) / 2, end_pos.y()
+        )
+        path.cubicTo(control_point_1, control_point_2, end_pos)
+        
+        
+        self.setPath(path)
+
+
+    
+
+
+
+
+
+
+
+
 if __name__== "__main__":
     import sys
     app = QtWidgets.QApplication(sys.argv)
