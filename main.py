@@ -149,8 +149,7 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
             path.moveTo(start_pos)
             path.lineTo(current_pos)
             self.temp_line.setPath(path)
-        super().mouseMoveEvent(event)
-
+        super().mouseMoveEvent(event)  
     
     def mouseReleaseEvent(self, event):
         if self.temp_line:
@@ -168,18 +167,38 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
                 # 记录连接关系
                 self.start_item.connections.append(connection)
                 end_item.connections.append(connection)
+                
+                # 全局更新顺序
+                self.update_order()
+                
             # 移除临时线
             self.scene().removeItem(self.temp_line)
             self.temp_line = None
             self.start_item = None
         super().mouseReleaseEvent(event)
 
+   
+    def update_order(self):
+        # 更新组件编号
+        # 找到所有组件
+        all_items = [item for item in self.scene().items() if isinstance(item, BaseComponent)]
 
+        # 找到起点组件（没有被其他组件连接的组件）
+        start_components = [item for item in all_items 
+                            if not any(conn.end_item == item for conn in item.connections)]
 
+        # 从起点开始递归更新顺序
+        for start_component in start_components:
+            self.propagate_order(start_component, 1)
+            
+    def propagate_order(self, component, order):
+        # 强制更新顺序，不管是否发生变化
+        component.set_order(order)  # 设置组件的顺序
+        for connection in component.connections:
+            # 确保检查连接线的起点是否是当前组件
+            if connection.start_item == component:
+                self.propagate_order(connection.end_item, order + 1)
 
-                
-                
-                
                 
                 
                 
@@ -189,16 +208,15 @@ class ConnectionLine(QtWidgets.QGraphicsPathItem):
         self.start_item = start_item
         self.end_item = end_item
         self.setPen(QtGui.QPen(QtCore.Qt.black, 2))  # 设置线条样式
-        self.update_position()
+        self.update_connectionline()
 
-    def update_position(self):
+    def update_connectionline(self):
         # 获取起点和终点的中心坐标
         start_pos = self.start_item.right_point.sceneBoundingRect().center()
         end_pos = self.end_item.left_point.sceneBoundingRect().center()
         # 创建路径
         path = QtGui.QPainterPath()
         path.moveTo(start_pos)
-        
         # 添加控制点以创建平滑曲线
         control_point_1 = QtCore.QPointF(
             start_pos.x() + (end_pos.x() - start_pos.x()) / 2, start_pos.y()
@@ -208,14 +226,29 @@ class ConnectionLine(QtWidgets.QGraphicsPathItem):
         )
         path.cubicTo(control_point_1, control_point_2, end_pos)
         
-        
         self.setPath(path)
-
-
     
-
-
-
+    # 添加右键功能
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.MouseButton.RightButton:
+            menu = QtWidgets.QMenu()  # 创建右键菜单
+            delete_action = menu.addAction("Delete Line")  # 添加删除选项
+            action = menu.exec_(event.screenPos())  # 显示菜单并捕获选择
+            if action == delete_action:
+                self.delete_line()  # 调用删除方法
+        super().mousePressEvent(event)
+        
+    
+        
+    # 删除连接线
+    def delete_line(self):
+        # 从组件中删除连接
+        self.start_item.connections.remove(self)
+        self.end_item.connections.remove(self)
+        # 从场景中删除连接
+        self.scene().removeItem(self)
+        
+    
 
 
 

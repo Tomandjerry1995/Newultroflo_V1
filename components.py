@@ -12,6 +12,7 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
         self.component_type = component_type
         self.connections = [] # 存储连接的线条
         self.add_connection_points()
+        self.order = None # 顺序编号
 
         
 
@@ -39,7 +40,7 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
         if dialog.exec_() == QtWidgets.QDialog.DialogCode.Accepted:
             self.update_parameters_from_inputs()
 
-
+    # 添加连接线
     def add_connection_points(self):
         # 添加左连接点
         self.left_point = QtWidgets.QGraphicsEllipseItem(-10, self.pixmap().height() / 2 - 5, 10, 10, self)
@@ -62,7 +63,17 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
                 connection.update_position()
         return super().itemChange(change, value)
 
+    # 添加次序
+    def set_order(self, order):
+        self.order = order
+        self.update()   # 触发重绘以显示顺序
 
+    def paint(self, painter, option, widget = None):
+        super().paint(painter, option, widget)
+        if self.order is not None:
+            painter.setPen(QtGui.QPen(QtCore.Qt.black))
+            painter.setFont(QtGui.QFont("Arial", 10))
+            painter.drawText(self.boundingRect(), QtCore.Qt.AlignCenter, str(self.order))
 
 
 
