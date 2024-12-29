@@ -34,6 +34,11 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
         
         main_layout.addWidget(top_splitter)
         
+        # 添加计算按钮
+        calculate_button = QtWidgets.QPushButton("Calculate")
+        calculate_button.clicked.connect(self.calculate_all)
+        main_layout.addWidget(calculate_button)
+        
         self.show()
         
     def create_left_panel(self):
@@ -79,6 +84,35 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
             drag.setHotSpot(QtCore.QPoint(drag.pixmap().width() // 2, drag.pixmap().height() // 2))
             drag.exec_(QtCore.Qt.DropAction.MoveAction)
         
+    def calculate_all(self):
+        """
+        按顺序计算所有组件的出口物性参数
+        """
+        # 获取所有组件并按顺序排序
+        all_items = sorted(
+            [item for item in self.scene.items() if isinstance(item, BaseComponent)],
+            key=lambda x: x.order
+        )
+
+        for i, component in enumerate(all_items):
+            if i == 0:  # 起点组件，无需入口参数计算
+                if isinstance(component, InletComponent):
+                    continue
+                else:
+                    QtWidgets.QMessageBox.warning(self, "Error", "First component must be an Inlet.")
+                    return
+            else:
+                # 获取上一个组件的出口参数
+                previous_component = all_items[i - 1]
+                if previous_component.outlet_properties:
+                    component.update_inlet_properties(previous_component.outlet_properties)
+                    component.calculate_outlet_properties()
+                else:
+                    QtWidgets.QMessageBox.warning(
+                        self, "Error",
+                        f"Cannot calculate for {component.component_type}: Missing inlet properties."
+                    )
+                    return
 
 class CustomGraphicsView(QtWidgets.QGraphicsView):
     def __init__(self, scene, main_window, parent=None):
