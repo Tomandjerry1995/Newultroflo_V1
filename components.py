@@ -1,5 +1,8 @@
 from PyQt5 import QtWidgets, QtCore, QtGui
 from properties import *
+from Gasflow_Equation import *
+import copy
+
 class BaseComponent(QtWidgets.QGraphicsPixmapItem):
     def __init__(self, icon_path, component_type):
         super().__init__()
@@ -31,7 +34,7 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
         buttons.accepted.connect(dialog.accept)
         buttons.rejected.connect(dialog.reject)
         layout.addWidget(buttons)
-        
+
         dialog.exec_()
 
     def contextMenuEvent(self, event):
@@ -99,29 +102,19 @@ class BaseComponent(QtWidgets.QGraphicsPixmapItem):
             painter.drawText(self.boundingRect(), QtCore.Qt.AlignCenter, str(self.order))
 
 
-    def get_parameters(self):
-        """在具体组件中实现，返回参数字典"""
-        return {}
-
-    def update_parameters_from_inputs(self):
-        """更新参数，具体逻辑由子类实现"""
-        pass
-
-
-
 
 class InletComponent(BaseComponent):
     def __init__(self, icon_path):
         super().__init__(icon_path, "Inlet")
         # 初始化入口物性参数
         self.nc = 0  # 组分数，int
-        self.ft = ["kmol/h", 0.0]  # 总摩尔流量，列表形式 [单位, 数值]
+        self.ft = ["kmol", 10.0]  # 总摩尔流量，列表形式 [单位, 数值]
         self.comps = []  # 组分列表，字符串形式
         self.fs = []  # 组分流量分布，列表形式 [组分种类, 单位, 摩尔百分比]
-        self.method = None  # 物性方法，int
+        self.method = 19  # 物性方法，int
         self.calc_type = "PT"  # 计算类型，字符串形式，默认 "PT"
-        self.variable1 = ["", 0.0]  # 变量1
-        self.variable2 = ["", 0.0]  # 变量2
+        self.variable1 = ["bara", 10.0]  # 变量1
+        self.variable2 = ["C", 10.0]  # 变量2
 
         # 初始化出口物性参数
         self.inlet_properties = Properties()
@@ -272,21 +265,23 @@ class InletComponent(BaseComponent):
                     "variable2": self.variable2,
                 }
             )
+            print(self.outlet_properties)
 
 
 class PipeComponent(BaseComponent):
     def __init__(self, icon_path):
         super().__init__(icon_path, "Pipe")
-        self.diameter = ["m", 0.5]
-        self.roughness = ["m", 0.00005]
-        self.length = ["m", 100]
-        self.section_number = 100
-        self.heat_loss = ["j/kg/m", -1000]
-        
+        self.diameter = ["m", 0.2027174]
+        self.roughness = ["m", 0.000046]
+        self.length = ["m", 800]
+        self.elevation = ["m", 0]
+        self.section_number = 10
+        self.heat_loss = ["j/kg/m", 0]
+
         # 物性参数
         self.inlet_properties = None  # 入口物性参数
         self.outlet_properties = None  # 出口物性参数
-    
+
     def show_input_dialog(self):
         dialog = QtWidgets.QDialog()
         dialog.setWindowTitle(f"{self.component_type} Parameters")
@@ -315,6 +310,14 @@ class PipeComponent(BaseComponent):
         length_layout.addWidget(self.length_unit_input)
         layout.addRow("Length:", length_layout)
 
+        # elevation 输入字段
+        self.elevation_unit_input = QtWidgets.QLineEdit(self.elevation[0])
+        self.elevation_value_input = QtWidgets.QLineEdit(str(self.elevation[1]))
+        elevation_layout = QtWidgets.QHBoxLayout()
+        elevation_layout.addWidget(self.elevation_value_input)
+        elevation_layout.addWidget(self.elevation_unit_input)
+        layout.addRow("Elevation:", elevation_layout)
+
         self.section_number_input = QtWidgets.QLineEdit(str(self.section_number))
         layout.addRow("Section Number:", self.section_number_input)
 
@@ -337,14 +340,14 @@ class PipeComponent(BaseComponent):
                 self.diameter = [self.diameter_unit_input.text(), float(self.diameter_value_input.text())]
                 self.roughness = [self.roughness_unit_input.text(), float(self.roughness_value_input.text())]
                 self.length = [self.length_unit_input.text(), float(self.length_value_input.text())]
+                self.elevation = [self.elevation_unit_input.text(), float(self.elevation_value_input.text())]
                 self.section_number = int(self.section_number_input.text())
                 self.heat_loss = [self.heat_loss_unit_input.text(), float(self.heat_loss_value_input.text())]
             except ValueError:
                 QtWidgets.QMessageBox.warning(None, "Input Error", "Please enter valid numbers for parameters.")
 
-    def fake_pipe_pressure_drop(self, properties, pipe_params):
-        # 假的管道压降计算方法
-        
+    def fake_pipe_pressure_drop(self, properties):
+
         # 创建一个新的 Properties 对象，复制原始值
         new_properties = Properties()
         new_properties.update_nc(properties.nc)
@@ -354,11 +357,12 @@ class PipeComponent(BaseComponent):
         new_properties.update_method(properties.method)
         new_properties.update_calc_type(properties.calc_type)
 
-        # 模拟计算：variable1 和 variable2 的数值部分减 1
-        new_variable1 = [properties.variable1[0], properties.variable1[1] - 1]
-        new_variable2 = [properties.variable2[0], properties.variable2[1] - 1]
-        new_properties.update_variable1(*new_variable1)
-        new_properties.update_variable2(*new_variable2)
+
+        new_variable1, new_variable2 = outlet_condition(properties.nc, properties.ft, properties.comps, properties.fs,
+                                                        properties.variable1, properties.variable2, properties.method,
+                                                        self.roughness[1], self.diameter[1], self.length[1], self.elevation[1], self.section_number, self.heat_loss[1])
+        new_properties.update_variable1(new_variable1[0], new_variable1[1])
+        new_properties.update_variable2(new_variable2[0], new_variable2[1])
 
         return new_properties
 
@@ -367,34 +371,17 @@ class PipeComponent(BaseComponent):
         self.inlet_properties = inlet_properties
 
     def calculate_outlet_properties(self):
-
-        # 管件参数打包成字典
-        pipe_params = {
-            "roughness": self.roughness,
-            "diameter": self.diameter,
-            "length": self.length,
-            "section_number": self.section_number,
-            "heat_loss": self.heat_loss,
-        }
-
-        # 调用假的压降计算方法
-        self.outlet_properties = self.fake_pipe_pressure_drop(self.inlet_properties, pipe_params)
-
-        # 打印计算结果
-        print(f"{self.component_type} Outlet Properties: {self.outlet_properties}")
+        try:
+            self.outlet_properties = self.fake_pipe_pressure_drop(copy.deepcopy(self.inlet_properties))
+            print(f"{self.component_type} Outlet Properties: {self.outlet_properties}")
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(None, "Calculation Error", f"An error occurred during calculation: {e}")
+            # 保留程序最后一次正确的参数
+            self.outlet_properties = copy.deepcopy(self.inlet_properties)
 
 
 
 
-
-    def get_parameters(self):
-        return 
-
-    def update_parameters_from_inputs(self):
-        return 
-
-
-        
 class ValveComponent(BaseComponent):
     def __init__(self, icon_path):
         super().__init__(icon_path, "Valve")

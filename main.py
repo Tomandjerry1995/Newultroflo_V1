@@ -5,42 +5,42 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.init_ui()
-        
+
     def init_ui(self):
         #设置主窗口标题和尺寸
         self.setWindowTitle("Pressure Drop Calculator")
         self.setGeometry(100,100,800,600)
-        
+
         #设置中央部件和主布局
         central_widget = QtWidgets.QWidget(self)
         main_layout = QtWidgets.QVBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
-        
+
         #创建顶部分割器
         top_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
-        
+
         #左侧：组件列表
         left_panel = self.create_left_panel()
         top_splitter.addWidget(left_panel)
-        
+
         #右侧：画布区域
         self.scene = QtWidgets.QGraphicsScene()
         self.right_panel = CustomGraphicsView(self.scene, self)
         self.right_panel.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,QtWidgets.QSizePolicy.Policy.Expanding)
         top_splitter.addWidget(self.right_panel)
-        
+
         #设置分割器比例
         top_splitter.setSizes([150,650])
-        
+
         main_layout.addWidget(top_splitter)
-        
+
         # 添加计算按钮
         calculate_button = QtWidgets.QPushButton("Calculate")
         calculate_button.clicked.connect(self.calculate_all)
         main_layout.addWidget(calculate_button)
-        
+
         self.show()
-        
+
     def create_left_panel(self):
         # 左侧面板用于显示组件列表及其图标
         left_panel = QtWidgets.QListWidget()
@@ -48,7 +48,7 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
         left_panel.setIconSize(QtCore.QSize(48,48)) #设置图标大小
         left_panel.setSpacing(10) #设置组件间距
         left_panel.setMovement(QtWidgets.QListView.Movement.Static)
-        
+
         # 定义组件和对应的图标
         components = [
             ("Pipe", "assets/pipe.png"),
@@ -57,21 +57,21 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
             ("Reducer", "assets/reducer.png"),
             ("Tee", "assets/tee.png"),
             ("Inlet", "assets/inlet.png"),
-            ("Outlet", "assets/outlet.png")            
+            ("Outlet", "assets/outlet.png")
         ]
-        
+
         # 创建组件列表项
         for name, icon_path in components:
             item = QtWidgets.QListWidgetItem(QtGui.QIcon(icon_path), name)
             item.setData(QtCore.Qt.ItemDataRole.UserRole, icon_path)
             left_panel.addItem(item)
-        
+
         left_panel.setMinimumWidth(150)
         left_panel.setDragEnabled(True) # 启用拖拽
         left_panel.setObjectName("componentList")
         left_panel.itemPressed.connect(self.start_drag)
         return left_panel
-             
+
     def start_drag(self, item):
         selected_item = item # 获取选中的列表项
         if selected_item:
@@ -83,7 +83,7 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
             drag.setPixmap(selected_item.icon().pixmap(48, 48))
             drag.setHotSpot(QtCore.QPoint(drag.pixmap().width() // 2, drag.pixmap().height() // 2))
             drag.exec_(QtCore.Qt.DropAction.MoveAction)
-        
+
     def calculate_all(self):
         """
         按顺序计算所有组件的出口物性参数
@@ -105,7 +105,8 @@ class PressureDropCalculator(QtWidgets.QMainWindow):
                 # 获取上一个组件的出口参数
                 previous_component = all_items[i - 1]
                 if previous_component.outlet_properties:
-                    component.update_inlet_properties(previous_component.outlet_properties)
+                    # 确保每个组件的入口属性是独立的副本
+                    component.update_inlet_properties(copy.deepcopy(previous_component.outlet_properties))
                     component.calculate_outlet_properties()
                 else:
                     QtWidgets.QMessageBox.warning(
@@ -119,18 +120,18 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
         super().__init__(scene, parent)
         self.main_window = main_window
         self.setAcceptDrops(True) # 允许放置事件
-        
+
         self.temp_line = None
         self.start_item = None
-        
 
-    # 放置组件        
+
+    # 放置组件
     def dragEnterEvent(self, event):
         event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
         event.acceptProposedAction()
-    
+
     def dropEvent(self, event):
         # 获取图标路径
         icon_path = event.mimeData().data("application/x-icon-path").data().decode()
@@ -183,8 +184,8 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
             path.moveTo(start_pos)
             path.lineTo(current_pos)
             self.temp_line.setPath(path)
-        super().mouseMoveEvent(event)  
-    
+        super().mouseMoveEvent(event)
+
     def mouseReleaseEvent(self, event):
         if self.temp_line:
             # 获取鼠标释放位置下的所有图形项
@@ -201,30 +202,30 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
                 # 记录连接关系
                 self.start_item.connections.append(connection)
                 end_item.connections.append(connection)
-                
+
                 # 全局更新顺序
                 self.update_order()
-                
+
             # 移除临时线
             self.scene().removeItem(self.temp_line)
             self.temp_line = None
             self.start_item = None
         super().mouseReleaseEvent(event)
 
-   
+
     def update_order(self):
         # 更新组件编号
         # 找到所有组件
         all_items = [item for item in self.scene().items() if isinstance(item, BaseComponent)]
 
         # 找到起点组件（没有被其他组件连接的组件）
-        start_components = [item for item in all_items 
+        start_components = [item for item in all_items
                             if not any(conn.end_item == item for conn in item.connections)]
 
         # 从起点开始递归更新顺序
         for start_component in start_components:
             self.propagate_order(start_component, 1)
-            
+
     def propagate_order(self, component, order):
         # 强制更新顺序，不管是否发生变化
         component.set_order(order)  # 设置组件的顺序
@@ -233,9 +234,6 @@ class CustomGraphicsView(QtWidgets.QGraphicsView):
             if connection.start_item == component:
                 self.propagate_order(connection.end_item, order + 1)
 
-                
-                
-                
 class ConnectionLine(QtWidgets.QGraphicsPathItem):
     def __init__(self, start_item, end_item):
         super().__init__()
@@ -259,9 +257,9 @@ class ConnectionLine(QtWidgets.QGraphicsPathItem):
             start_pos.x() + (end_pos.x() - start_pos.x()) / 2, end_pos.y()
         )
         path.cubicTo(control_point_1, control_point_2, end_pos)
-        
+
         self.setPath(path)
-    
+
     # 添加右键功能
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.RightButton:
@@ -271,9 +269,9 @@ class ConnectionLine(QtWidgets.QGraphicsPathItem):
             if action == delete_action:
                 self.delete_line()  # 调用删除方法
         super().mousePressEvent(event)
-        
-    
-        
+
+
+
     # 删除连接线
     def delete_line(self):
         # 从组件中删除连接
@@ -281,8 +279,8 @@ class ConnectionLine(QtWidgets.QGraphicsPathItem):
         self.end_item.connections.remove(self)
         # 从场景中删除连接
         self.scene().removeItem(self)
-        
-    
+
+
 
 
 
